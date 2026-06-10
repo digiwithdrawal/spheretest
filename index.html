@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sphere Visualizer Practice</title>
+
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: white;
+}
+
+canvas {
+  display: block;
+}
+</style>
+</head>
+
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+let scene, camera, renderer;
+let sphere, geometry, material;
+let analyser, dataArray, audioContext;
+let micStarted = false;
+
+let audioLevel = 0;
+let smoothLevel = 0;
+let bassLevel = 0;
+
+let colorIndex = 0;
+
+const colorways = [
+  {
+    name: "B/W",
+    sphere: "#000000",
+    background: "#ffffff",
+    emissive: "#000000"
+  },
+  {
+    name: "Cyan / Red",
+    sphere: "#00f5ff",
+    background: "#ff003c",
+    emissive: "#00f5ff"
+  },
+  {
+    name: "Purple / Lime",
+    sphere: "#7b00ff",
+    background: "#c6ff00",
+    emissive: "#7b00ff"
+  },
+  {
+    name: "Orange / Blue",
+    sphere: "#ff6a00",
+    background: "#003cff",
+    emissive: "#ff6a00"
+  },
+  {
+    name: "Pink / Green",
+    sphere: "#ff00a8",
+    background: "#00ff66",
+    emissive: "#ff00a8"
+  },
+  {
+    name: "Yellow / Violet",
+    sphere: "#ffe600",
+    background: "#320064",
+    emissive: "#ffe600"
+  },
+  {
+    name: "White / Black",
+    sphere: "#ffffff",
+    background: "#000000",
+    emissive: "#ffffff"
+  }
+];
+
+init();
+animate();
+
+function init() {
+  scene = new THREE.Scene();
+
+  camera = new THREE.PerspectiveCamera(
+    60,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    100
+  );
+
+  camera.position.z = 4;
+
+  renderer = new THREE.WebGLRenderer({
+    antialias: true
+  });
+
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  document.body.appendChild(renderer.domElement);
+
+  geometry = new THREE.SphereGeometry(1.35, 160, 160);
+
+  material = new THREE.MeshPhysicalMaterial({
+    color: "#000000",
+    roughness: 0.22,
+    metalness: 0.15,
+    clearcoat: 1,
+    emissive: "#000000",
+    emissiveIntensity: 0.2
+  });
+
+  sphere = new THREE.Mesh(geometry, material);
+  scene.add(sphere);
+
+  const light1 = new THREE.PointLight("#ffffff", 4);
+  light1.position.set(4, 4, 5);
+  scene.add(light1);
+
+  const light2 = new THREE.PointLight("#ffffff", 2);
+  light2.position.set(-4, -3, 3);
+  scene.add(light2);
+
+  applyColorway();
+
+  window.addEventListener("resize", resize);
+
+  window.addEventListener("keydown", function(e) {
+    if (e.code === "Space") {
+      e.preventDefault();
+      startMicIfNeeded();
+      nextColorway();
+    }
+  });
+
+  window.addEventListener("pointerdown", function() {
+    startMicIfNeeded();
+    nextColorway();
+  });
+}
+
+async function startMicIfNeeded() {
+  if (micStarted) return;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    });
+
+    audioContext = new AudioContext();
+
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.65;
+
+    const source = audioContext.createMediaStreamSource(stream);
+    source.connect(analyser);
+
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    micStarted = true;
+  } catch (err) {
+    console.log("Microphone blocked or unavailable.");
+  }
+}
+
+function getAudio() {
+  if (!analyser) return;
+
+  analyser.getByteFrequencyData(dataArray);
+
+  let sum = 0;
+  let bass = 0;
+
+  for (let i = 0; i < dataArray.length; i++) {
+    sum += dataArray[i];
+
+    if (i < 35) {
+      bass += dataArray[i];
+    }
+  }
+
+  audioLevel = sum / dataArray.length / 255;
+  bassLevel = bass / 35 / 255;
+
+  let combined = Math.min(1, audioLevel * 0.8 + bassLevel * 1.3);
+
+  smoothLevel += (combined - smoothLevel) * 0.2;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  getAudio();
+
+  const time = performance.now() * 0.001;
+
+  sphere.rotation.y += 0.004 + smoothLevel * 0.035;
+  sphere.rotation.x += 0.002 + smoothLevel * 0.02;
+
+  const pos = geometry.attributes.position;
+
+  const loud = Math.max(0, smoothLevel - 0.42);
+  const expansion = loud * loud * 1.8;
+
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i);
+    let y = pos.getY(i);
+    let z = pos.getZ(i);
+
+    let length = Math.sqrt(x * x + y * y + z * z);
+
+    let nx = x / length;
+    let ny = y / length;
+    let nz = z / length;
+
+    let liquid =
+      Math.sin(nx * 6 + time * 2.1) * 0.05 +
+      Math.sin(ny * 9 + time * 2.8) * 0.05 +
+      Math.sin(nz * 12 + time * 3.4) * 0.045;
+
+    let spikePattern =
+      Math.pow(
+        Math.max(
+          0,
+          Math.sin(nx * 22 + ny * 18 + nz * 14 + time * 9)
+        ),
+        7
+      );
+
+    let spikes = spikePattern * loud * 2.7;
+
+    let microRipples =
+      Math.sin((nx + ny + nz) * 40 + time * 12) *
+      smoothLevel *
+      0.035;
+
+    let radius =
+      1.35 +
+      smoothLevel * 0.55 +
+      liquid * (1 + smoothLevel * 8) +
+      spikes +
+      expansion +
+      microRipples;
+
+    pos.setXYZ(
+      i,
+      nx * radius,
+      ny * radius,
+      nz * radius
+    );
+  }
+
+  pos.needsUpdate = true;
+  geometry.computeVertexNormals();
+
+  material.emissiveIntensity = 0.15 + smoothLevel * 2.5;
+
+  camera.position.z = 4 + smoothLevel * 0.35;
+
+  renderer.render(scene, camera);
+}
+
+function nextColorway() {
+  colorIndex++;
+
+  if (colorIndex >= colorways.length) {
+    colorIndex = 0;
+  }
+
+  applyColorway();
+}
+
+function applyColorway() {
+  const c = colorways[colorIndex];
+
+  material.color.set(c.sphere);
+  material.emissive.set(c.emissive);
+  scene.background = new THREE.Color(c.background);
+}
+
+function resize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+</script>
+
+</body>
+</html>
