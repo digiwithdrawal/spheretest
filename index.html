@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Sphere Visualizer Test</title>
+<title>Sphere Boot Visualizer</title>
 
 <style>
 html, body {
@@ -11,50 +11,16 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: white;
+  background: #ffffff;
 }
 
 canvas {
   display: block;
 }
-
-#boot {
-  position: fixed;
-  inset: 0;
-  background: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 5;
-  animation: fadeOut 1s ease forwards;
-  animation-delay: 3.2s;
-}
-
-#dot {
-  width: 12px;
-  height: 12px;
-  background: black;
-  border-radius: 50%;
-  animation: growDot 3s ease forwards;
-}
-
-@keyframes growDot {
-  0% { transform: scale(1); }
-  50% { transform: scale(8); }
-  100% { transform: scale(22); opacity: 0; }
-}
-
-@keyframes fadeOut {
-  to { opacity: 0; pointer-events: none; }
-}
 </style>
 </head>
 
 <body>
-
-<div id="boot">
-  <div id="dot"></div>
-</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
@@ -68,8 +34,8 @@ let audioLevel = 0;
 let smoothLevel = 0;
 let bassLevel = 0;
 
-let bootDone = false;
 let colorIndex = 0;
+let startTime = performance.now();
 
 const colorways = [
   ["#000000", "#ffffff"],
@@ -106,10 +72,6 @@ const colorways = [
 init();
 animate();
 
-setTimeout(() => {
-  bootDone = true;
-}, 3200);
-
 function init() {
   scene = new THREE.Scene();
 
@@ -127,7 +89,7 @@ function init() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  geometry = new THREE.SphereGeometry(1.35, 160, 160);
+  geometry = new THREE.SphereGeometry(1.35, 180, 180);
 
   material = new THREE.MeshPhysicalMaterial({
     color: "#000000",
@@ -135,7 +97,7 @@ function init() {
     metalness: 0.12,
     clearcoat: 1,
     emissive: "#000000",
-    emissiveIntensity: 0.15
+    emissiveIntensity: 0.12
   });
 
   sphere = new THREE.Mesh(geometry, material);
@@ -218,11 +180,14 @@ function animate() {
   getAudio();
 
   const time = performance.now() * 0.001;
+  const bootTime = (performance.now() - startTime) / 1000;
 
-  if (bootDone && sphere.scale.x < 1) {
-    const s = sphere.scale.x + 0.025;
-    sphere.scale.set(s, s, s);
-  }
+  let bootProgress = Math.min(1, bootTime / 4.2);
+  let easedBoot = easeOutCubic(bootProgress);
+
+  let bootScale = 0.015 + easedBoot * 0.985;
+
+  sphere.scale.set(bootScale, bootScale, bootScale);
 
   sphere.rotation.y += 0.004 + smoothLevel * 0.035;
   sphere.rotation.x += 0.002 + smoothLevel * 0.02;
@@ -231,6 +196,11 @@ function animate() {
 
   const loud = Math.max(0, smoothLevel - 0.42);
   const expansion = loud * loud * 1.9;
+
+  const bootWobble =
+    bootProgress < 1
+      ? Math.sin(time * 7) * (1 - bootProgress) * 0.12
+      : 0;
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -260,11 +230,15 @@ function animate() {
       smoothLevel *
       0.035;
 
-    const breathing = micStarted ? 0 : Math.sin(time * 2) * 0.035;
+    const idleBreathing =
+      !micStarted && bootProgress >= 1
+        ? Math.sin(time * 2) * 0.035
+        : 0;
 
     const radius =
       1.35 +
-      breathing +
+      bootWobble +
+      idleBreathing +
       smoothLevel * 0.55 +
       liquid * (1 + smoothLevel * 8) +
       spikes +
@@ -299,7 +273,6 @@ function applyColorway() {
   material.color.set(sphereColor);
   material.emissive.set(sphereColor);
   scene.background = new THREE.Color(bgColor);
-
   document.body.style.background = bgColor;
 }
 
@@ -307,6 +280,10 @@ function resize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function easeOutCubic(x) {
+  return 1 - Math.pow(1 - x, 3);
 }
 </script>
 
