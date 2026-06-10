@@ -3,16 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Sphere Visualizer Practice</title>
+<title>Sphere Visualizer Test</title>
 
 <style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 html, body {
+  margin: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -22,72 +17,98 @@ html, body {
 canvas {
   display: block;
 }
+
+#boot {
+  position: fixed;
+  inset: 0;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  animation: fadeOut 1s ease forwards;
+  animation-delay: 3.2s;
+}
+
+#dot {
+  width: 12px;
+  height: 12px;
+  background: black;
+  border-radius: 50%;
+  animation: growDot 3s ease forwards;
+}
+
+@keyframes growDot {
+  0% { transform: scale(1); }
+  50% { transform: scale(8); }
+  100% { transform: scale(22); opacity: 0; }
+}
+
+@keyframes fadeOut {
+  to { opacity: 0; pointer-events: none; }
+}
 </style>
 </head>
 
 <body>
+
+<div id="boot">
+  <div id="dot"></div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
 let scene, camera, renderer;
 let sphere, geometry, material;
-let analyser, dataArray, audioContext;
+let analyser, dataArray;
 let micStarted = false;
 
 let audioLevel = 0;
 let smoothLevel = 0;
 let bassLevel = 0;
 
+let bootDone = false;
 let colorIndex = 0;
 
 const colorways = [
-  {
-    name: "B/W",
-    sphere: "#000000",
-    background: "#ffffff",
-    emissive: "#000000"
-  },
-  {
-    name: "Cyan / Red",
-    sphere: "#00f5ff",
-    background: "#ff003c",
-    emissive: "#00f5ff"
-  },
-  {
-    name: "Purple / Lime",
-    sphere: "#7b00ff",
-    background: "#c6ff00",
-    emissive: "#7b00ff"
-  },
-  {
-    name: "Orange / Blue",
-    sphere: "#ff6a00",
-    background: "#003cff",
-    emissive: "#ff6a00"
-  },
-  {
-    name: "Pink / Green",
-    sphere: "#ff00a8",
-    background: "#00ff66",
-    emissive: "#ff00a8"
-  },
-  {
-    name: "Yellow / Violet",
-    sphere: "#ffe600",
-    background: "#320064",
-    emissive: "#ffe600"
-  },
-  {
-    name: "White / Black",
-    sphere: "#ffffff",
-    background: "#000000",
-    emissive: "#ffffff"
-  }
+  ["#000000", "#ffffff"],
+  ["#00f5ff", "#ff003c"],
+  ["#7b00ff", "#c6ff00"],
+  ["#ff6a00", "#003cff"],
+  ["#ff00a8", "#00ff66"],
+  ["#ffe600", "#320064"],
+  ["#00ffcc", "#ff2a00"],
+  ["#ff0055", "#00ffaa"],
+  ["#0066ff", "#ffcc00"],
+  ["#b700ff", "#ccff00"],
+  ["#ff3300", "#00ccff"],
+  ["#39ff14", "#25004d"],
+  ["#ff00ff", "#003300"],
+  ["#00ff99", "#660000"],
+  ["#ff8800", "#001aff"],
+  ["#004cff", "#ff7b00"],
+  ["#cc00ff", "#99ff00"],
+  ["#00ddff", "#ff0066"],
+  ["#ffea00", "#1500ff"],
+  ["#ff0044", "#00ffdd"],
+  ["#7cff00", "#3b0066"],
+  ["#00aaff", "#ff3c00"],
+  ["#ff1493", "#00ff00"],
+  ["#aaff00", "#2200ff"],
+  ["#ff5500", "#0044ff"],
+  ["#00ffee", "#ff2200"],
+  ["#ff00cc", "#00ff88"],
+  ["#6600ff", "#dfff00"],
+  ["#ffffff", "#000000"]
 ];
 
 init();
 animate();
+
+setTimeout(() => {
+  bootDone = true;
+}, 3200);
 
 function init() {
   scene = new THREE.Scene();
@@ -101,13 +122,9 @@ function init() {
 
   camera.position.z = 4;
 
-  renderer = new THREE.WebGLRenderer({
-    antialias: true
-  });
-
+  renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
-
   document.body.appendChild(renderer.domElement);
 
   geometry = new THREE.SphereGeometry(1.35, 160, 160);
@@ -115,13 +132,14 @@ function init() {
   material = new THREE.MeshPhysicalMaterial({
     color: "#000000",
     roughness: 0.22,
-    metalness: 0.15,
+    metalness: 0.12,
     clearcoat: 1,
     emissive: "#000000",
-    emissiveIntensity: 0.2
+    emissiveIntensity: 0.15
   });
 
   sphere = new THREE.Mesh(geometry, material);
+  sphere.scale.set(0.01, 0.01, 0.01);
   scene.add(sphere);
 
   const light1 = new THREE.PointLight("#ffffff", 4);
@@ -136,29 +154,26 @@ function init() {
 
   window.addEventListener("resize", resize);
 
-  window.addEventListener("keydown", function(e) {
+  window.addEventListener("pointerdown", () => {
+    startMic();
+    nextColorway();
+  });
+
+  window.addEventListener("keydown", e => {
     if (e.code === "Space") {
       e.preventDefault();
-      startMicIfNeeded();
+      startMic();
       nextColorway();
     }
   });
-
-  window.addEventListener("pointerdown", function() {
-    startMicIfNeeded();
-    nextColorway();
-  });
 }
 
-async function startMicIfNeeded() {
+async function startMic() {
   if (micStarted) return;
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true
-    });
-
-    audioContext = new AudioContext();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const audioContext = new AudioContext();
 
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 1024;
@@ -168,10 +183,9 @@ async function startMicIfNeeded() {
     source.connect(analyser);
 
     dataArray = new Uint8Array(analyser.frequencyBinCount);
-
     micStarted = true;
-  } catch (err) {
-    console.log("Microphone blocked or unavailable.");
+  } catch {
+    console.log("Mic permission blocked.");
   }
 }
 
@@ -194,8 +208,7 @@ function getAudio() {
   audioLevel = sum / dataArray.length / 255;
   bassLevel = bass / 35 / 255;
 
-  let combined = Math.min(1, audioLevel * 0.8 + bassLevel * 1.3);
-
+  const combined = Math.min(1, audioLevel * 0.75 + bassLevel * 1.4);
   smoothLevel += (combined - smoothLevel) * 0.2;
 }
 
@@ -206,67 +219,65 @@ function animate() {
 
   const time = performance.now() * 0.001;
 
+  if (bootDone && sphere.scale.x < 1) {
+    const s = sphere.scale.x + 0.025;
+    sphere.scale.set(s, s, s);
+  }
+
   sphere.rotation.y += 0.004 + smoothLevel * 0.035;
   sphere.rotation.x += 0.002 + smoothLevel * 0.02;
 
   const pos = geometry.attributes.position;
 
   const loud = Math.max(0, smoothLevel - 0.42);
-  const expansion = loud * loud * 1.8;
+  const expansion = loud * loud * 1.9;
 
   for (let i = 0; i < pos.count; i++) {
-    let x = pos.getX(i);
-    let y = pos.getY(i);
-    let z = pos.getZ(i);
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
 
-    let length = Math.sqrt(x * x + y * y + z * z);
+    const length = Math.sqrt(x * x + y * y + z * z);
 
-    let nx = x / length;
-    let ny = y / length;
-    let nz = z / length;
+    const nx = x / length;
+    const ny = y / length;
+    const nz = z / length;
 
-    let liquid =
+    const liquid =
       Math.sin(nx * 6 + time * 2.1) * 0.05 +
       Math.sin(ny * 9 + time * 2.8) * 0.05 +
       Math.sin(nz * 12 + time * 3.4) * 0.045;
 
-    let spikePattern =
-      Math.pow(
-        Math.max(
-          0,
-          Math.sin(nx * 22 + ny * 18 + nz * 14 + time * 9)
-        ),
-        7
-      );
+    const spikePattern = Math.pow(
+      Math.max(0, Math.sin(nx * 22 + ny * 18 + nz * 14 + time * 9)),
+      7
+    );
 
-    let spikes = spikePattern * loud * 2.7;
+    const spikes = spikePattern * loud * 2.8;
 
-    let microRipples =
-      Math.sin((nx + ny + nz) * 40 + time * 12) *
+    const ripples =
+      Math.sin((nx + ny + nz) * 42 + time * 13) *
       smoothLevel *
       0.035;
 
-    let radius =
+    const breathing = micStarted ? 0 : Math.sin(time * 2) * 0.035;
+
+    const radius =
       1.35 +
+      breathing +
       smoothLevel * 0.55 +
       liquid * (1 + smoothLevel * 8) +
       spikes +
       expansion +
-      microRipples;
+      ripples;
 
-    pos.setXYZ(
-      i,
-      nx * radius,
-      ny * radius,
-      nz * radius
-    );
+    pos.setXYZ(i, nx * radius, ny * radius, nz * radius);
   }
 
   pos.needsUpdate = true;
   geometry.computeVertexNormals();
 
-  material.emissiveIntensity = 0.15 + smoothLevel * 2.5;
-
+  material.emissiveIntensity = 0.12 + smoothLevel * 2.5;
   camera.position.z = 4 + smoothLevel * 0.35;
 
   renderer.render(scene, camera);
@@ -283,17 +294,18 @@ function nextColorway() {
 }
 
 function applyColorway() {
-  const c = colorways[colorIndex];
+  const [sphereColor, bgColor] = colorways[colorIndex];
 
-  material.color.set(c.sphere);
-  material.emissive.set(c.emissive);
-  scene.background = new THREE.Color(c.background);
+  material.color.set(sphereColor);
+  material.emissive.set(sphereColor);
+  scene.background = new THREE.Color(bgColor);
+
+  document.body.style.background = bgColor;
 }
 
 function resize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 </script>
